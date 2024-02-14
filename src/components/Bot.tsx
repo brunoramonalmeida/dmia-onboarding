@@ -1,4 +1,4 @@
-import { createSignal, createEffect, For, onMount, Show } from 'solid-js';
+import { createSignal, createEffect, For, onMount, Show, mergeProps, createMemo, Accessor } from 'solid-js';
 import { v4 as uuidv4 } from 'uuid';
 import { sendMessageQuery, isStreamAvailableQuery, IncomingInput, getChatbotConfig } from '@/queries/sendMessageQuery';
 import { TextInput } from './inputs/textInput';
@@ -15,6 +15,10 @@ import { Avatar } from '@/components/avatars/Avatar';
 import { DeleteButton } from '@/components/SendButton';
 
 type messageType = 'apiMessage' | 'userMessage' | 'usermessagewaiting';
+
+type observerConfigType = (accessor: string | boolean | object | MessageType[]) => void;
+
+export type observersConfigType = Record<'observeUserInput' | 'observeLoading' | 'observeMessages', observerConfigType>;
 
 export type MessageType = {
   message: string;
@@ -35,10 +39,12 @@ export type BotProps = {
   badgeBackgroundColor?: string;
   bubbleBackgroundColor?: string;
   bubbleTextColor?: string;
+  showTitle?: boolean;
   title?: string;
   titleAvatarSrc?: string;
   fontSize?: number;
   isFullPage?: boolean;
+  observersConfig?: observersConfigType;
 };
 
 const defaultWelcomeMessage = 'Hi there! How can I help?';
@@ -120,7 +126,9 @@ const defaultWelcomeMessage = 'Hi there! How can I help?';
     },
 ]*/
 
-export const Bot = (props: BotProps & { class?: string }) => {
+export const Bot = (botProps: BotProps & { class?: string }) => {
+  // set a default value for showTitle if not set and merge with other props
+  const props = mergeProps({ showTitle: true }, botProps);
   let chatContainer: HTMLDivElement | undefined;
   let bottomSpacer: HTMLDivElement | undefined;
   let botContainer: HTMLDivElement | undefined;
@@ -144,6 +152,25 @@ export const Bot = (props: BotProps & { class?: string }) => {
   const [starterPrompts, setStarterPrompts] = createSignal<string[]>([], { equals: false });
 
   onMount(() => {
+    if (botProps?.observersConfig) {
+      const { observeUserInput, observeLoading, observeMessages } = botProps.observersConfig;
+      typeof observeUserInput === 'function' &&
+        // eslint-disable-next-line solid/reactivity
+        createMemo(() => {
+          observeUserInput(userInput());
+        });
+      typeof observeLoading === 'function' &&
+        // eslint-disable-next-line solid/reactivity
+        createMemo(() => {
+          observeLoading(loading());
+        });
+      typeof observeMessages === 'function' &&
+        // eslint-disable-next-line solid/reactivity
+        createMemo(() => {
+          observeMessages(messages());
+        });
+    }
+
     if (!bottomSpacer) return;
     setTimeout(() => {
       chatContainer?.scrollTo(0, chatContainer.scrollHeight);
@@ -460,42 +487,44 @@ export const Bot = (props: BotProps & { class?: string }) => {
               )}
             </For>
           </div>
-          <div
-            style={{
-              display: 'flex',
-              'flex-direction': 'row',
-              'align-items': 'center',
-              height: '50px',
-              position: props.isFullPage ? 'fixed' : 'absolute',
-              top: 0,
-              left: 0,
-              width: '100%',
-              background: props.bubbleBackgroundColor,
-              color: props.bubbleTextColor,
-              'border-top-left-radius': props.isFullPage ? '0px' : '6px',
-              'border-top-right-radius': props.isFullPage ? '0px' : '6px',
-            }}
-          >
-            <Show when={props.titleAvatarSrc}>
-              <>
-                <div style={{ width: '15px' }} />
-                <Avatar initialAvatarSrc={props.titleAvatarSrc} />
-              </>
-            </Show>
-            <Show when={props.title}>
-              <span class="px-3 whitespace-pre-wrap font-semibold max-w-full">{props.title}</span>
-            </Show>
-            <div style={{ flex: 1 }} />
-            <DeleteButton
-              sendButtonColor={props.bubbleTextColor}
-              type="button"
-              isDisabled={messages().length === 1}
-              class="my-2 ml-2"
-              on:click={clearChat}
+          {props.showTitle ? (
+            <div
+              style={{
+                display: 'flex',
+                'flex-direction': 'row',
+                'align-items': 'center',
+                height: '50px',
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                width: '100%',
+                background: props.bubbleBackgroundColor,
+                color: props.bubbleTextColor,
+                'border-top-left-radius': props.isFullPage ? '0px' : '6px',
+                'border-top-right-radius': props.isFullPage ? '0px' : '6px',
+              }}
             >
-              <span style={{ 'font-family': 'Poppins, sans-serif' }}>Clear</span>
-            </DeleteButton>
-          </div>
+              <Show when={props.titleAvatarSrc}>
+                <>
+                  <div style={{ width: '15px' }} />
+                  <Avatar initialAvatarSrc={props.titleAvatarSrc} />
+                </>
+              </Show>
+              <Show when={props.title}>
+                <span class="px-3 whitespace-pre-wrap font-semibold max-w-full">{props.title}</span>
+              </Show>
+              <div style={{ flex: 1 }} />
+              <DeleteButton
+                sendButtonColor={props.bubbleTextColor}
+                type="button"
+                isDisabled={messages().length === 1}
+                class="my-2 ml-2"
+                on:click={clearChat}
+              >
+                <span style={{ 'font-family': 'Poppins, sans-serif' }}>Clear</span>
+              </DeleteButton>
+            </div>
+          ) : null}
           <TextInput
             backgroundColor={props.textInput?.backgroundColor}
             textColor={props.textInput?.textColor}
